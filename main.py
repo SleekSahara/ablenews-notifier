@@ -9,7 +9,7 @@ import feedparser
 # ---------------------------------------------------------
 # 1. 설정 부분
 # ---------------------------------------------------------
-# 감지할 키워드 목록
+# 감지할 키워드 목록 (직접 추가하신 확장된 키워드 유지)
 KEYWORDS = ["수어", "농인", "농아인", "수화", "농아인협회", "수어통역센터", "장애인"]
 
 # 중복 발송 방지를 위한 기록 파일
@@ -19,12 +19,11 @@ LOG_FILE = "sent_articles.json"
 ABLE_NEWS_RSS = "https://www.ablenews.co.kr/rss/allArticle.xml"
 
 # 구글 뉴스(대부분의 인터넷 뉴스) 키워드 검색 RSS 피드 자동 생성
-# "수어 OR 농인 OR 농아인" 형태로 검색어를 만듭니다.
 search_query = " OR ".join(KEYWORDS)
 encoded_query = urllib.parse.quote(search_query)
 GOOGLE_NEWS_RSS = f"https://news.google.com/rss/search?q={encoded_query}&hl=ko&gl=KR&ceid=KR:ko"
 
-# 검사할 피드 목록을 리스트로 묶습니다.
+# 검사할 피드 목록
 RSS_FEEDS = [ABLE_NEWS_RSS, GOOGLE_NEWS_RSS]
 
 
@@ -45,23 +44,30 @@ def load_sent_articles():
 
 def save_sent_articles(sent_list):
     """발송한 기사 링크 목록 저장 (최대 1000개 유지)"""
-    # 뉴스량이 많아졌으므로 기억할 링크 개수를 1000개로 늘림
     trimmed_list = list(sent_list)[-1000:]
     with open(LOG_FILE, "w", encoding="utf-8") as f:
         json.dump(trimmed_list, f, ensure_ascii=False, indent=2)
 
 
 def send_email(new_articles):
-    """네이버 SMTP를 사용하여 메일 발송"""
+    """네이버 SMTP를 사용하여 여러 명에게 메일 발송"""
     naver_id = os.environ.get("NAVER_ID")
     naver_password = os.environ.get("NAVER_PASSWORD")
-    recipient_email = os.environ.get("RECIPIENT_EMAIL")
+    recipient_email_str = os.environ.get("RECIPIENT_EMAIL")
 
-    if not all([naver_id, naver_password, recipient_email]):
+    if not all([naver_id, naver_password, recipient_email_str]):
         print("이메일 환경변수가 설정되지 않아 메일을 전송할 수 없습니다.")
         return
 
-    subject = f"[통합 뉴스 알림] 수어/농인 관련 새 기사 {len(new_articles)}건"
+    # 쉼표(,)로 구분된 이메일 주소들을 리스트로 분리하여 다중 수신 지원
+    recipient_list = [email.strip() for email in recipient_email_str.split(",") if email.strip()]
+
+    if not recipient_list:
+        print("수신자 이메일 목록이 비어 있습니다.")
+        return
+
+    # 키워드가 많아졌으므로 이메일 제목을 포괄적으로 변경
+    subject = f"[통합 뉴스 알림] 설정 키워드 관련 새 기사 {len(new_articles)}건"
     
     articles_html = ""
     for article in new_articles:
@@ -86,6 +92,7 @@ def send_email(new_articles):
         </div>
         """
 
+    # 직접 수정하신 깔끔한 제목 양식("📰 뉴스 키워드 알림") 반영
     html_content = f"""
     <html>
     <body style="font-family: Arial, sans-serif; padding: 20px;">
@@ -100,15 +107,17 @@ def send_email(new_articles):
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = naver_id
-    msg["To"] = recipient_email
+    # 수신자가 여러 명일 경우를 위해 쉼표로 다시 조합하여 To에 할당
+    msg["To"] = ", ".join(recipient_list)
     msg.attach(MIMEText(html_content, "html", "utf-8"))
 
     try:
         # 네이버 SMTP 서버 연결 (포트 465)
         with smtplib.SMTP_SSL("smtp.naver.com", 465) as server:
             server.login(naver_id, naver_password)
-            server.sendmail(naver_id, recipient_email, msg.as_string())
-        print(f"총 {len(new_articles)}건의 기사 알림 메일 발송 완료.")
+            # 목록에 등록된 모든 사람에게 각각 발송 처리
+            server.sendmail(naver_id, recipient_list, msg.as_string())
+        print(f"총 {len(recipient_list)}명에게 {len(new_articles)}건의 기사 알림 메일 발송 완료.")
     except Exception as e:
         print(f"메일 발송 중 오류 발생: {e}")
 
@@ -134,10 +143,9 @@ def main():
             summary = entry.get("summary", "") or entry.get("description", "")
             content = f"{title} {summary}"
 
-            # 구글 뉴스 특성상 제목이나 요약에 키워드가 없을 수도 있으니 안전하게 필터링
+            # 설정된 전체 키워드 매칭 검사
             matched = [kw for kw in KEYWORDS if kw in content]
             if matched:
-                # 출처(언론사) 구분을 위한 로직
                 source = "에이블뉴스" if feed_url == ABLE_NEWS_RSS else entry.get("source", {}).get("title", "구글 뉴스")
                 
                 new_matched_articles.append({
