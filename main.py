@@ -89,7 +89,7 @@ def send_email(new_articles):
     html_content = f"""
     <html>
     <body style="font-family: Arial, sans-serif; padding: 20px;">
-        <h2 style="color: #202124;">📰 에이블뉴스 & 구글 뉴스 키워드 알림</h2>
+        <h2 style="color: #202124;">📰 뉴스 키워드 알림</h2>
         <p style="color: #5f6368;">설정하신 키워드(<strong>{', '.join(KEYWORDS)}</strong>)가 포함된 새 기사가 등록되었습니다.</p>
         <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
         {articles_html}
