@@ -2,9 +2,9 @@ name: Check Ablenews Articles
 
 on:
   schedule:
-    # 한국 시간 매일 아침 9시(UTC 0시 0분)에 1회 자동 실행
-    - cron: '0 0 * * *'
-  workflow_dispatch: # 수동 실행을 위한 버튼 활성화
+    # 한국 시간 매일 아침 9시 10분 자동 실행 (서버 지연 방지)
+    - cron: '10 0 * * *'
+  workflow_dispatch:
 
 jobs:
   check-and-notify:
@@ -14,10 +14,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
