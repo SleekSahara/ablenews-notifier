@@ -21,16 +21,33 @@ LOG_FILE = "sent_articles.json"
 LIMIT_DAYS = 2
 LIMIT_SECONDS = LIMIT_DAYS * 24 * 60 * 60
 
-# 에이블뉴스 전체기사 RSS 피드
+# 언론사별 전체기사 RSS 피드 주소
 ABLE_NEWS_RSS = "https://www.ablenews.co.kr/rss/allArticle.xml"
+BEMINOR_RSS = "https://www.beminor.com/rss/allArticle.xml"
+WELFARE_NEWS_RSS = "https://www.welfarenews.net/rss/allArticle.xml"
+SOCIAL_FOCUS_RSS = "https://www.socialfocus.co.kr/rss/allArticle.xml"
 
-# 구글 뉴스 키워드 검색 RSS 피드 자동 생성
+# 구글 뉴스(대부분의 인터넷 뉴스) 키워드 검색 RSS 피드 자동 생성
 search_query = " OR ".join(KEYWORDS)
 encoded_query = urllib.parse.quote(search_query)
 GOOGLE_NEWS_RSS = f"https://news.google.com/rss/search?q={encoded_query}&hl=ko&gl=KR&ceid=KR:ko"
 
-# 검사할 피드 목록
-RSS_FEEDS = [ABLE_NEWS_RSS, GOOGLE_NEWS_RSS]
+# 검사할 전체 피드 목록
+RSS_FEEDS = [
+    ABLE_NEWS_RSS, 
+    BEMINOR_RSS, 
+    WELFARE_NEWS_RSS, 
+    SOCIAL_FOCUS_RSS, 
+    GOOGLE_NEWS_RSS
+]
+
+# 출처(언론사) 이름을 깔끔하게 표시하기 위한 매핑 딕셔너리
+FEED_NAMES = {
+    ABLE_NEWS_RSS: "에이블뉴스",
+    BEMINOR_RSS: "비마이너",
+    WELFARE_NEWS_RSS: "웰페어뉴스",
+    SOCIAL_FOCUS_RSS: "소셜포커스"
+}
 
 
 # ---------------------------------------------------------
@@ -131,7 +148,7 @@ def main():
     # 현재 시간을 초 단위로 가져옴
     now_ts = time.time()
 
-    # 에이블뉴스와 구글뉴스를 번갈아가며 모두 검사합니다.
+    # 등록된 전체 RSS 피드를 순회하며 검사합니다.
     for feed_url in RSS_FEEDS:
         feed = feedparser.parse(feed_url)
 
@@ -158,7 +175,8 @@ def main():
             # 설정된 전체 키워드 매칭 검사
             matched = [kw for kw in KEYWORDS if kw in content]
             if matched:
-                source = "에이블뉴스" if feed_url == ABLE_NEWS_RSS else entry.get("source", {}).get("title", "구글 뉴스")
+                # 직접 등록한 언론사면 FEED_NAMES에서 이름을 가져오고, 아니면 구글 뉴스에서 가져온 출처명 사용
+                source = FEED_NAMES.get(feed_url, entry.get("source", {}).get("title", "구글 뉴스"))
                 
                 new_matched_articles.append({
                     "title": title,
