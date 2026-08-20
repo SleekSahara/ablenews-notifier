@@ -4,6 +4,8 @@ import re
 import smtplib
 import urllib.parse
 import html
+from email.header import Header
+from email.utils import formataddr
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import feedparser
@@ -13,8 +15,10 @@ import calendar
 # ---------------------------------------------------------
 # 1. 설정 부분
 # ---------------------------------------------------------
+# 메일 수신함에 표시될 발송자 이름
+SENDER_NAME = "손말 뉴스레터"
+
 # 감지할 키워드 목록
-# (※ "장애인" 키워드가 너무 많은 기사를 가져온다면 목록에서 "장애인"을 빼주시면 수어/농인 집중 모드가 됩니다.)
 KEYWORDS = ["수어", "농인", "농아인", "수화", "농아인협회", "수어통역센터"]
 
 # 중복 발송 방지를 위한 기록 파일
@@ -107,6 +111,9 @@ def send_email(new_articles):
 
     subject = f"[통합 뉴스 알림] 키워드 관련 새 소식 {len(new_articles)}건"
     
+    # 발송자 표시 이름(SENDER_NAME)을 한글 깨짐 없이 포맷팅
+    sender_header = formataddr((str(Header(SENDER_NAME, 'utf-8')), naver_id))
+    
     articles_html = ""
     for idx, article in enumerate(new_articles, 1):
         matched_str = ", ".join(article["matched_keywords"])
@@ -155,16 +162,16 @@ def send_email(new_articles):
         with smtplib.SMTP_SSL("smtp.naver.com", 465) as server:
             server.login(naver_id, naver_password)
             
-            # 각 수신자에게 개별 발송하여 개인정보 보호 및 안정성 확보
+            # 각 수신자에게 개별 발송
             for recipient in recipient_list:
                 msg = MIMEMultipart("alternative")
                 msg["Subject"] = subject
-                msg["From"] = naver_id
+                msg["From"] = sender_header
                 msg["To"] = recipient
                 msg.attach(MIMEText(html_content, "html", "utf-8"))
                 server.sendmail(naver_id, [recipient], msg.as_string())
                 
-        print(f"총 {len(recipient_list)}명에게 {len(new_articles)}건의 기사 알림 메일 개별 발송 완료.")
+        print(f"총 {len(recipient_list)}명에게 '{SENDER_NAME}' 이름으로 {len(new_articles)}건의 기사 알림 메일 발송 완료.")
     except Exception as e:
         print(f"메일 발송 중 오류 발생: {e}")
 
@@ -173,7 +180,6 @@ def main():
     sent_articles = load_sent_articles()
     new_matched_articles = []
     
-    # 이번 회차에서 추가된 제목들을 임시 기억하여 서로 다른 피드 간 중복도 즉시 방지
     current_run_titles = set()
     now_ts = time.time()
 
@@ -190,7 +196,7 @@ def main():
             title = clean_text(raw_title)
             norm_title = normalize_title(title)
 
-            # 링크나 제목이 이미 보낸 기록에 있거나 이번 실행에서 이미 추가되었다면 제외
+            # 이미 보낸 기록에 있거나 이번 실행에서 중복된 제목이면 제외
             if not link or link in sent_articles or norm_title in sent_articles or norm_title in current_run_titles:
                 continue
 
@@ -205,12 +211,12 @@ def main():
             summary = clean_text(raw_summary)
             content = f"{title} {summary}"
 
-            # 설정된 전체 키워드 매칭 검사
+            # 키워드 매칭 검사
             matched = [kw for kw in KEYWORDS if kw in content]
             if matched:
                 source = FEED_NAMES.get(feed_url, entry.get("source", {}).get("title", "구글 뉴스"))
                 
-                # 구글 뉴스 제목 뒤에 붙는 ' - 언론사' 문구 깔끔하게 분리
+                # 구글 뉴스 제목 끝의 언론사 분리
                 if feed_url == GOOGLE_NEWS_RSS and " - " in title:
                     parts = title.rsplit(" - ", 1)
                     title = parts[0]
@@ -225,7 +231,6 @@ def main():
                     "source": source
                 })
                 
-                # 링크와 제목 모두 저장 목록에 등록
                 sent_articles.add(link)
                 sent_articles.add(norm_title)
                 current_run_titles.add(norm_title)
