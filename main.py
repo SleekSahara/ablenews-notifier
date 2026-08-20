@@ -4,6 +4,7 @@ import re
 import smtplib
 import urllib.parse
 import html
+from datetime import datetime, timezone, timedelta
 from email.header import Header
 from email.utils import formataddr
 from email.mime.text import MIMEText
@@ -109,9 +110,15 @@ def send_email(new_articles):
         print("수신자 이메일 목록이 비어 있습니다.")
         return
 
-    subject = f"[통합 뉴스 알림] 키워드 관련 새 소식 {len(new_articles)}건"
+    # 한국 표준시(KST, UTC+9) 기준으로 오늘 날짜 추출 (예: 8월 20일)
+    kst_tz = timezone(timedelta(hours=9))
+    now_kst = datetime.now(kst_tz)
+    today_str = f"{now_kst.month}월 {now_kst.day}일"
     
-    # 발송자 표시 이름(SENDER_NAME)을 한글 깨짐 없이 포맷팅
+    # 요청하신 이메일 제목 형식 적용
+    subject = f"[손말 뉴스] {today_str} 수어·농사회 주요 소식 ({len(new_articles)}건)"
+    
+    # 발송자 표시 이름 포맷팅
     sender_header = formataddr((str(Header(SENDER_NAME, 'utf-8')), naver_id))
     
     articles_html = ""
@@ -143,9 +150,9 @@ def send_email(new_articles):
     <html>
     <body style="font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', Arial, sans-serif; padding: 20px; background-color: #f8fafc; color: #1e293b;">
         <div style="max-width: 680px; margin: 0 auto; background: #ffffff; padding: 24px; border-radius: 12px; border: 1px solid #e2e8f0;">
-            <h2 style="color: #0f172a; margin-top: 0; border-bottom: 2px solid #03c75a; padding-bottom: 12px;">📰 뉴스 키워드 맞춤 알림</h2>
+            <h2 style="color: #0f172a; margin-top: 0; border-bottom: 2px solid #03c75a; padding-bottom: 12px;">📰 {today_str} 손말 뉴스 브리핑</h2>
             <p style="color: #64748b; font-size: 14px; line-height: 1.5;">
-                설정하신 키워드(<strong>{', '.join(KEYWORDS)}</strong>)가 포함된 기사가 총 <strong>{len(new_articles)}건</strong> 수집되었습니다.
+                설정하신 키워드(<strong>{', '.join(KEYWORDS)}</strong>) 관련 기사가 총 <strong>{len(new_articles)}건</strong> 수집되었습니다.
             </p>
             <div style="margin-top: 20px;">
                 {articles_html}
@@ -171,7 +178,7 @@ def send_email(new_articles):
                 msg.attach(MIMEText(html_content, "html", "utf-8"))
                 server.sendmail(naver_id, [recipient], msg.as_string())
                 
-        print(f"총 {len(recipient_list)}명에게 '{SENDER_NAME}' 이름으로 {len(new_articles)}건의 기사 알림 메일 발송 완료.")
+        print(f"총 {len(recipient_list)}명에게 '{SENDER_NAME}' 이름으로 '{subject}' 메일 발송 완료.")
     except Exception as e:
         print(f"메일 발송 중 오류 발생: {e}")
 
