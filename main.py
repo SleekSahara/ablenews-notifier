@@ -5,20 +5,26 @@ import urllib.parse
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import feedparser
+import time
+import calendar
 
 # ---------------------------------------------------------
 # 1. 설정 부분
 # ---------------------------------------------------------
-# 감지할 키워드 목록 (직접 추가하신 확장된 키워드 유지)
+# 감지할 키워드 목록
 KEYWORDS = ["수어", "농인", "농아인", "수화", "농아인협회", "수어통역센터"]
 
 # 중복 발송 방지를 위한 기록 파일
 LOG_FILE = "sent_articles.json"
 
+# 최근 며칠 이내의 기사만 가져올지 설정 (예: 2 = 최근 48시간 이내 기사만)
+LIMIT_DAYS = 2
+LIMIT_SECONDS = LIMIT_DAYS * 24 * 60 * 60
+
 # 에이블뉴스 전체기사 RSS 피드
 ABLE_NEWS_RSS = "https://www.ablenews.co.kr/rss/allArticle.xml"
 
-# 구글 뉴스(대부분의 인터넷 뉴스) 키워드 검색 RSS 피드 자동 생성
+# 구글 뉴스 키워드 검색 RSS 피드 자동 생성
 search_query = " OR ".join(KEYWORDS)
 encoded_query = urllib.parse.quote(search_query)
 GOOGLE_NEWS_RSS = f"https://news.google.com/rss/search?q={encoded_query}&hl=ko&gl=KR&ceid=KR:ko"
@@ -59,14 +65,13 @@ def send_email(new_articles):
         print("이메일 환경변수가 설정되지 않아 메일을 전송할 수 없습니다.")
         return
 
-    # 쉼표(,)로 구분된 이메일 주소들을 리스트로 분리하여 다중 수신 지원
+    # 쉼표(,)로 구분된 이메일 주소들을 리스트로 분리
     recipient_list = [email.strip() for email in recipient_email_str.split(",") if email.strip()]
 
     if not recipient_list:
         print("수신자 이메일 목록이 비어 있습니다.")
         return
 
-    # 키워드가 많아졌으므로 이메일 제목을 포괄적으로 변경
     subject = f"[통합 뉴스 알림] 설정 키워드 관련 새 기사 {len(new_articles)}건"
     
     articles_html = ""
@@ -92,7 +97,6 @@ def send_email(new_articles):
         </div>
         """
 
-    # 직접 수정하신 깔끔한 제목 양식("📰 뉴스 키워드 알림") 반영
     html_content = f"""
     <html>
     <body style="font-family: Arial, sans-serif; padding: 20px;">
@@ -107,7 +111,6 @@ def send_email(new_articles):
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = naver_id
-    # 수신자가 여러 명일 경우를 위해 쉼표로 다시 조합하여 To에 할당
     msg["To"] = ", ".join(recipient_list)
     msg.attach(MIMEText(html_content, "html", "utf-8"))
 
@@ -115,7 +118,6 @@ def send_email(new_articles):
         # 네이버 SMTP 서버 연결 (포트 465)
         with smtplib.SMTP_SSL("smtp.naver.com", 465) as server:
             server.login(naver_id, naver_password)
-            # 목록에 등록된 모든 사람에게 각각 발송 처리
             server.sendmail(naver_id, recipient_list, msg.as_string())
         print(f"총 {len(recipient_list)}명에게 {len(new_articles)}건의 기사 알림 메일 발송 완료.")
     except Exception as e:
@@ -125,6 +127,9 @@ def send_email(new_articles):
 def main():
     sent_articles = load_sent_articles()
     new_matched_articles = []
+    
+    # 현재 시간을 초 단위로 가져옴
+    now_ts = time.time()
 
     # 에이블뉴스와 구글뉴스를 번갈아가며 모두 검사합니다.
     for feed_url in RSS_FEEDS:
@@ -138,6 +143,13 @@ def main():
             link = entry.get("link")
             if not link or link in sent_articles:
                 continue
+
+            # 날짜 검사: 설정한 기간(LIMIT_DAYS)보다 오래된 기사는 무시
+            published_parsed = entry.get("published_parsed")
+            if published_parsed:
+                pub_ts = calendar.timegm(published_parsed)
+                if now_ts - pub_ts > LIMIT_SECONDS:
+                    continue
 
             title = entry.get("title", "")
             summary = entry.get("summary", "") or entry.get("description", "")
